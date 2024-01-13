@@ -13,6 +13,7 @@ fn main() -> anyhow::Result<()> {
         // TODO revisit with 0.20. Seems like the memory image generation should be streamlined.
         let program = Program::load_elf(FACTORS_ELF, GUEST_MAX_MEM as u32)?;
         let image = MemoryImage::new(&program, PAGE_SIZE as u32)?;
+        // TODO check if the image id has to be this exact form. Seems strange.
         let image_id = hex::encode(image.compute_id());
         let image = bincode::serialize(&image).expect("Failed to serialize memory img");
         client.upload_img(&image_id, image)?;
