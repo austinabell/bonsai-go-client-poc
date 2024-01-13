@@ -14,9 +14,11 @@ import (
 	"github.com/austinabell/bonsai"
 )
 
+// Headers to apply to all bonsai requests.
 func applyApiKey(ctx context.Context, req *http.Request) error {
-	apiKey := os.Getenv("BONSAI_API_KEY")
-	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("x-api-key", os.Getenv("BONSAI_API_KEY"))
+	// Note: this header is only needed to create a session, but might as well include for all
+	//       to future proof, as the Rust impl does this.
 	req.Header.Set("x-risc0-version", "0.19.1")
 	return nil
 }
@@ -37,6 +39,7 @@ func putDataToURL(c context.Context, url string, data io.Reader) error {
 }
 
 func uploadInput(c context.Context, client *bonsai.ClientWithResponses, data []byte) (string, error) {
+	// Request a url to upload the data to.
 	uploadResponse, err := client.RouteInputUploadWithResponse(c)
 	if err != nil {
 		return "", err
@@ -60,6 +63,8 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	// Get the version info of the server, just to verify we can connect.
 	response, err := client.RouteVersionDataWithResponse(context.TODO())
 	if err != nil {
 		log.Fatalln(err)
@@ -78,6 +83,7 @@ func main() {
 	binary.LittleEndian.PutUint64(data[:8], inputA)
 	binary.LittleEndian.PutUint64(data[8:], inputB)
 
+	// Upload the input for the proving session.
 	inputUuid, err := uploadInput(context.TODO(), client, data)
 	if err != nil {
 		log.Fatalln(err)
@@ -85,6 +91,7 @@ func main() {
 
 	fmt.Println("Input UUID:", inputUuid)
 
+	// Create a new proving session with the image and input.
 	sessionCreateParams := bonsai.SessionCreate{
 		// Note: Image ID is coming from examples/factors.
 		Img:   "d5ddf6ddb4b8ee860a56c4fcf65d0b1b843ac2aa74b45c0d0b71d8c1db424ecb",
@@ -102,6 +109,7 @@ func main() {
 	sessionUuid := session.JSON200.Uuid
 
 	for {
+		// Fetch status of the session.
 		statusResponse, err := client.RouteSessionStatusWithResponse(context.TODO(), sessionUuid)
 		if err != nil {
 			log.Fatalln(err)
