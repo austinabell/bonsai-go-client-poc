@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -139,8 +138,13 @@ func main() {
 				log.Fatalln(err)
 			}
 
-			receiptEncoded := base64.URLEncoding.EncodeToString(receipt)
-			fmt.Println("Receipt:", receiptEncoded)
+			// Write the receipt to a file
+			err = os.WriteFile("receipt.bin", receipt, 0644)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Println("Receipt written to file")
+
 			// var receipt Receipt
 			// err = bincode.Deserialize(receiptBuf, &receipt)
 			// if err != nil {

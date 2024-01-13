@@ -21,5 +21,12 @@ fn main() -> anyhow::Result<()> {
 
     println!("Uploaded image with id: {}", img_id);
 
+    // TODO move this to a separate binary. Currently just used to quickly check to make sure Receipt is good.
+    // let receipt = include_bytes!("../../../../receipt.bin");
+    // let receipt = bincode::deserialize::<risc0_zkvm::Receipt>(receipt)?;
+    // let result: u64 = receipt.journal.decode()?;
+    // println!("Result: {}", result);
+    // receipt.verify(methods::FACTORS_ID)?;
+
     Ok(())
 }
