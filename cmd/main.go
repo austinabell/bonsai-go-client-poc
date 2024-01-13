@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/austinabell/bonsai"
 )
 
 func applyApiKey(ctx context.Context, req *http.Request) error {
-	req.Header.Set("x-api-key", "")
+	apiKey := os.Getenv("BONSAI_API_KEY")
+	req.Header.Set("x-api-key", apiKey)
 	return nil
 }
 
