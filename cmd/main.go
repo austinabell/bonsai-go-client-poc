@@ -58,6 +58,77 @@ func uploadInput(c context.Context, client *bonsai.ClientWithResponses, data []b
 	return uploadData.Uuid, nil
 }
 
+// TODO explore this API, might be better to have it as an ambiguous reader, to avoid forcing slice alloc
+func waitForSession(c context.Context, client *bonsai.ClientWithResponses, sessionUuid string) ([]byte, error) {
+	for {
+		// Fetch status of the session.
+		statusResponse, err := client.RouteSessionStatusWithResponse(c, sessionUuid)
+		if err != nil {
+			return nil, err
+		}
+		res := statusResponse.JSON200
+		if res == nil {
+			return nil, fmt.Errorf("session status data not included in response, status code: %s", statusResponse.Status())
+		}
+
+		if res.Status == "RUNNING" {
+			if res.State == nil {
+				return nil, fmt.Errorf("state not included in response")
+			}
+			fmt.Printf("Current status: %s - state: %s - continue polling...\n", res.Status, *res.State)
+			time.Sleep(5 * time.Second)
+			continue
+		} else if res.Status == "SUCCEEDED" {
+			receiptURL := res.ReceiptUrl
+			if receiptURL == nil {
+				return nil, fmt.Errorf("receipt url not included in response")
+			}
+
+			// Download the receipt.
+			receiptRes, err := http.Get(*receiptURL)
+			if err != nil {
+				return nil, err
+			}
+			defer receiptRes.Body.Close()
+
+			receipt, err := io.ReadAll(receiptRes.Body)
+			if err != nil {
+				return nil, err
+			}
+
+			return receipt, nil
+		} else {
+			if res.ErrorMsg == nil {
+				return nil, fmt.Errorf("error message not included in response")
+			}
+			return nil, fmt.Errorf("workflow exited: %s - err: %s", res.Status, *res.ErrorMsg)
+		}
+	}
+}
+
+// TODO this could re-use logic from the above, but since the responses are of very different types, this is not feasible
+func waitForSnark(c context.Context, client *bonsai.ClientWithResponses, sessionUuid string) (*bonsai.SnarkReceipt, error) {
+	for {
+		// Fetch status of the session.
+		statusResponse, err := client.RouteSnarkStatusWithResponse(c, sessionUuid)
+		if err != nil {
+			return nil, err
+		}
+		res := statusResponse.JSON200
+		if res == nil {
+			return nil, fmt.Errorf("session status data not included in response, status code: %s", statusResponse.Status())
+		}
+
+		if res.Status == "RUNNING" {
+			fmt.Printf("Current status: %s - continue polling...\n", res.Status)
+			time.Sleep(5 * time.Second)
+			continue
+		} else if res.Status == "SUCCEEDED" {
+			return res.Output, nil
+		}
+	}
+}
+
 func main() {
 	client, err := bonsai.NewClientWithResponses("https://api.bonsai.xyz/", bonsai.WithRequestEditorFn(applyApiKey))
 	if err != nil {
@@ -106,71 +177,34 @@ func main() {
 	if session.JSON200 == nil {
 		log.Fatalln("Error: created session data not included in response")
 	}
-	sessionUuid := session.JSON200.Uuid
+	starkUUID := session.JSON200.Uuid
 
-	for {
-		// Fetch status of the session.
-		statusResponse, err := client.RouteSessionStatusWithResponse(context.TODO(), sessionUuid)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		res := statusResponse.JSON200
-		if res == nil {
-			log.Fatalln("Error: session status data not included in response")
-		}
-
-		if res.Status == "RUNNING" {
-			if res.State == nil {
-				log.Fatalln("Error: state not included in response")
-			}
-			fmt.Printf("Current status: %s - state: %s - continue polling...\n", res.Status, *res.State)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		if res.Status == "SUCCEEDED" {
-			receiptURL := res.ReceiptUrl
-			if receiptURL == nil {
-				log.Fatalln("Error: receipt url not included in response")
-			}
-
-			// Download the receipt.
-			receiptRes, err := http.Get(*receiptURL)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			defer receiptRes.Body.Close()
-
-			receipt, err := io.ReadAll(receiptRes.Body)
-			if err != nil {
-				log.Fatalln(err)
-			}
-
-			// Write the receipt to a file
-			err = os.WriteFile("receipt.bin", receipt, 0644)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			fmt.Println("Receipt written to file")
-
-			// var receipt Receipt
-			// err = bincode.Deserialize(receiptBuf, &receipt)
-			// if err != nil {
-			// 	log.Fatalln(err)
-			// }
-
-			// err = receipt.Verify(METHOD_NAME_ID)
-			// if err != nil {
-			// 	log.Fatalln(err)
-			// }
-		} else {
-			if res.ErrorMsg == nil {
-				log.Fatalln("Error: error message not included in response")
-			}
-			log.Fatalf("Workflow exited: %s - err: %s\n", res.Status, *res.ErrorMsg)
-			return
-		}
-
-		break
+	fmt.Println("Stark UUID:", starkUUID)
+	starkReceipt, err := waitForSession(context.TODO(), client, starkUUID)
+	if err != nil {
+		log.Fatalln(err)
 	}
+	// Write the receipt to a file
+	err = os.WriteFile("starkReceipt.bin", starkReceipt, 0644)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println("Stark receipt written to file")
+
+	// Stark to Snark
+	snarkRes, err := client.RouteSnarkCreateWithResponse(context.TODO(), bonsai.SnarkCreate{SessionId: starkUUID})
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if snarkRes.JSON200 == nil {
+		log.Fatalln("Error: snark session UUID not included in response")
+	}
+	snarkUUID := snarkRes.JSON200.Uuid
+
+	fmt.Println("Snark UUID:", snarkUUID)
+	snarkReceipt, err := waitForSnark(context.TODO(), client, snarkUUID)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("Snark receipt: %+v\n", snarkReceipt)
 }
