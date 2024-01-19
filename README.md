@@ -31,7 +31,7 @@ oapi-codegen -package=bonsai -generate=types,client -o=client.go bonsai-oapi.yml
 
 ## TODO (all optional)
 
-- [ ] Stark to snark API calls
+- [x] Stark to snark API calls
 - [ ] Create stable wrapper API around the oapi codegen (stability and usability)
 - [ ] Could verify receipts through FFI to do sanity checks before validating on-chain 
   - currently requires passing receipt to Rust

@@ -23,14 +23,14 @@ func applyApiKey(ctx context.Context, req *http.Request) error {
 	return nil
 }
 
-func putDataToURL(c context.Context, url string, data io.Reader) error {
+func putDataToURL(ctx context.Context, url string, data io.Reader) error {
 	// TODO find cleaner way to handle this. Ideally reusing same client.
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodPut, url, data)
 	if err != nil {
 		return err
 	}
-	_, err = client.Do(req)
+	_, err = client.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -38,9 +38,9 @@ func putDataToURL(c context.Context, url string, data io.Reader) error {
 	return nil
 }
 
-func uploadInput(c context.Context, client *bonsai.ClientWithResponses, data []byte) (string, error) {
+func uploadInput(ctx context.Context, client *bonsai.ClientWithResponses, data []byte) (string, error) {
 	// Request a url to upload the data to.
-	uploadResponse, err := client.RouteInputUploadWithResponse(c)
+	uploadResponse, err := client.RouteInputUploadWithResponse(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -50,7 +50,7 @@ func uploadInput(c context.Context, client *bonsai.ClientWithResponses, data []b
 	}
 
 	// Upload the data to the url provided by the server.
-	err = putDataToURL(c, uploadData.Url, bytes.NewBuffer(data))
+	err = putDataToURL(ctx, uploadData.Url, bytes.NewBuffer(data))
 	if err != nil {
 		return "", err
 	}
@@ -59,10 +59,17 @@ func uploadInput(c context.Context, client *bonsai.ClientWithResponses, data []b
 }
 
 // TODO explore this API, might be better to have it as an ambiguous reader, to avoid forcing slice alloc
-func waitForSession(c context.Context, client *bonsai.ClientWithResponses, sessionUuid string) ([]byte, error) {
+func waitForSession(ctx context.Context, client *bonsai.ClientWithResponses, sessionUuid string) ([]byte, error) {
 	for {
+		// Check if the context has been cancelled.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		// Fetch status of the session.
-		statusResponse, err := client.RouteSessionStatusWithResponse(c, sessionUuid)
+		statusResponse, err := client.RouteSessionStatusWithResponse(ctx, sessionUuid)
 		if err != nil {
 			return nil, err
 		}
@@ -107,10 +114,16 @@ func waitForSession(c context.Context, client *bonsai.ClientWithResponses, sessi
 }
 
 // TODO this could re-use logic from the above, but since the responses are of very different types, this is not feasible
-func waitForSnark(c context.Context, client *bonsai.ClientWithResponses, sessionUuid string) (*bonsai.SnarkReceipt, error) {
+func waitForSnark(ctx context.Context, client *bonsai.ClientWithResponses, sessionUuid string) (*bonsai.SnarkReceipt, error) {
 	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		// Fetch status of the session.
-		statusResponse, err := client.RouteSnarkStatusWithResponse(c, sessionUuid)
+		statusResponse, err := client.RouteSnarkStatusWithResponse(ctx, sessionUuid)
 		if err != nil {
 			return nil, err
 		}
